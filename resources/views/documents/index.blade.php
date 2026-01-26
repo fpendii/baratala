@@ -138,6 +138,13 @@
                                             </a>
                                         </li>
                                         <li>
+                                            <a class="dropdown-item text-warning" "
+                                                href="{{route('documents.edit', $item->id)}}"
+                                                data-id="{{ $item->id }}" data-title="{{ $item->title }}">
+                                                <i class="ri-upload-2-line me-2"></i> Edit
+                                            </a>
+                                        </li>
+                                        <li>
                                             <hr class="dropdown-divider">
                                         </li>
                                         <li>

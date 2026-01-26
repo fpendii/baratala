@@ -186,39 +186,38 @@ class DocumentController extends Controller
             default                   => 'Selamat Malam',
         };
 
-        // Ambil data direktur
-        $direktur = Pengguna::where('role', 'direktur')->first();
-
-        if (!$direktur || !$direktur->no_hp) {
-            Log::warning('Notifikasi WA Gagal: Nomor WhatsApp Direktur tidak ditemukan');
-            return;
-        }
-
-        // === AMBIL DATA TAGS ===
-        // Mengambil nama-nama tag dan menggabungkannya dengan koma (contoh: Urgent, Penting, Legal)
+        // 1. Data Tags & Kategori
         $tagsNames = $document->tags->pluck('name')->implode(', ');
-        $displayTags = $tagsNames ?: '-'; // Jika tidak ada tags, tampilkan tanda strip
-
-        // Ambil nama kategori
+        $displayTags = $tagsNames ?: '-';
         $categoryName = $document->category->name ?? 'Tanpa Kategori';
 
-        // === Pesan WhatsApp ===
+        // 2. Susun Pesan
         $message =
-            "👋 *{$salam}, {$direktur->nama}*\n\n" .
-            "📁 *Arsip Dokumen Baru*\n\n" .
+            "👋 *{$salam}*\n\n" .
+            "📁 *PEMBERITAHUAN ARSIP DOKUMEN BARU*\n" .
+            "━━━━━━━━━━━━━━━━━━\n\n" .
             "📝 *Judul:* {$document->title}\n" .
-            "🔢 *Nomor:* {$document->doc_number}\n" .
+            "🔢 *Nomor Dokumen:* {$document->doc_number}\n" .
             "📂 *Kategori:* {$categoryName}\n" .
-            "🏷️ *Tags:* {$displayTags}\n" . // Menambahkan baris Tags
+            "🏷️ *Tags:* {$displayTags}\n" .
             "👤 *Pengunggah:* " . (Auth::user()->nama ?? 'Sistem') . "\n" .
             "📅 *Tanggal:* " . now()->format('d/m/Y H:i') . " WIB\n\n" .
-            "Silakan buka aplikasi e-Archive untuk melihat detail dokumen.\n\n" .
+            "Silakan cek sistem Baratala untuk detail lebih lanjut.\n\n" .
             "_Notifikasi otomatis dari Sistem Baratala_";
 
         try {
-            \App\Helpers\WhatsAppHelper::send($direktur->no_hp, $message);
+            // --- KIRIM KE DIREKTUR (Personal) ---
+            $direktur = \App\Models\Pengguna::where('role', 'direktur')->first();
+            if ($direktur && $direktur->no_hp) {
+                \App\Helpers\WhatsAppHelper::send($direktur->no_hp, $message);
+            }
+
+            // --- KIRIM KE GRUP (Group) ---
+            // Ganti 'ID_GRUP_ANDA' dengan JID/ID grup dari provider WA Anda (misal: 12036302xxxx@g.us)
+            $groupId = env('WA_GROUP_ID');
+            \App\Helpers\WhatsAppHelper::send($groupId, $message);
         } catch (\Exception $e) {
-            Log::error('Error WA: ' . $e->getMessage());
+            Log::error('Error WA Notification: ' . $e->getMessage());
         }
     }
 
@@ -270,5 +269,48 @@ class DocumentController extends Controller
     {
         $document->delete();
         return redirect()->back()->with('success', 'Dokumen dipindahkan ke tempat sampah.');
+    }
+
+    public function edit($id)
+    {
+        $document = Document::with('tags')->findOrFail($id);
+        $categories = Category::all();
+        $tags = Tag::all(); // Untuk pilihan di select2
+
+        return view('documents.edit', compact('document', 'categories', 'tags'));
+    }
+
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'title'       => 'required|string|max:255',
+            'category_id' => 'required|exists:categories,id',
+            'doc_number'  => 'required|unique:documents,doc_number,' . $id,
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $document = Document::findOrFail($id);
+            $document->title = $request->title;
+            $document->description = $request->description;
+            $document->category_id = $request->category_id;
+            $document->doc_number = $request->doc_number;
+            $document->is_confidential = $request->has('is_confidential') ? 1 : 0;
+            $document->save();
+
+            // Update Tags
+            if ($request->has('tags')) {
+                $document->tags()->sync($request->tags);
+            } else {
+                $document->tags()->detach();
+            }
+
+            DB::commit();
+            return redirect()->route('documents.index')->with('success', 'Data dokumen berhasil diperbarui.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->with('error', 'Gagal memperbarui: ' . $e->getMessage());
+        }
     }
 }
