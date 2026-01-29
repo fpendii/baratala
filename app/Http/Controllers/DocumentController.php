@@ -95,7 +95,7 @@ class DocumentController extends Controller
                 $document->doc_number = $request->doc_number;
             } else {
                 $count = Document::whereYear('created_at', date('Y'))->count();
-                $document->doc_number = 'PD/' . date('Y/m/') . str_pad($count + 1, 4, '0', STR_PAD_LEFT);
+                $document->doc_number = 'PD/' . date('Y/m/') . str_pad($count + 2, 4, '0', STR_PAD_LEFT);
             }
             $document->save();
 
@@ -177,23 +177,14 @@ class DocumentController extends Controller
 
     private function sendWhatsAppNotification($document)
     {
-        // === Salam otomatis ===
-        $hour = now()->format('H');
-        $salam = match (true) {
-            $hour >= 5 && $hour < 12  => 'Selamat Pagi',
-            $hour >= 12 && $hour < 17 => 'Selamat Siang',
-            $hour >= 17 && $hour < 20 => 'Selamat Sore',
-            default                   => 'Selamat Malam',
-        };
-
-        // 1. Data Tags & Kategori
-        $tagsNames = $document->tags->pluck('name')->implode(', ');
+        $tagsNames   = $document->tags->pluck('name')->implode(', ');
         $displayTags = $tagsNames ?: '-';
         $categoryName = $document->category->name ?? 'Tanpa Kategori';
 
-        // 2. Susun Pesan
+        $appUrl = env('APP_URL_WA');
+        $documentUrl = $appUrl . '/dokumen/' . $document->id; // sesuaikan dengan route Anda
+
         $message =
-            "👋 *{$salam}*\n\n" .
             "📁 *PEMBERITAHUAN ARSIP DOKUMEN BARU*\n" .
             "━━━━━━━━━━━━━━━━━━\n\n" .
             "📝 *Judul:* {$document->title}\n" .
@@ -202,24 +193,24 @@ class DocumentController extends Controller
             "🏷️ *Tags:* {$displayTags}\n" .
             "👤 *Pengunggah:* " . (Auth::user()->nama ?? 'Sistem') . "\n" .
             "📅 *Tanggal:* " . now()->format('d/m/Y H:i') . " WIB\n\n" .
-            "Silakan cek sistem Baratala untuk detail lebih lanjut.\n\n" .
-            "_Notifikasi otomatis dari Sistem Baratala_";
+            "Silakan cek sistem Baratala untuk detail lebih lanjut.\n" .
+            "🔗 " . $appUrl . "documents \n\n" .
+            "_Notifikasi otomatis dari Sistem Baratala_\n";
+
 
         try {
-            // --- KIRIM KE DIREKTUR (Personal) ---
             $direktur = \App\Models\Pengguna::where('role', 'direktur')->first();
             if ($direktur && $direktur->no_hp) {
                 \App\Helpers\WhatsAppHelper::send($direktur->no_hp, $message);
             }
 
-            // --- KIRIM KE GRUP (Group) ---
-            // Ganti 'ID_GRUP_ANDA' dengan JID/ID grup dari provider WA Anda (misal: 12036302xxxx@g.us)
             $groupId = env('WA_GROUP_ID');
             \App\Helpers\WhatsAppHelper::send($groupId, $message);
         } catch (\Exception $e) {
             Log::error('Error WA Notification: ' . $e->getMessage());
         }
     }
+
 
     public function download($versionId)
     {

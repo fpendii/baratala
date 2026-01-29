@@ -3,7 +3,6 @@
 use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Response; // Tambahkan ini di atasuse App\Http\Controllers\karyawan\KeuanganControllerKaryawan;
 use App\Http\Controllers\KeuanganController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\RencanaController;
